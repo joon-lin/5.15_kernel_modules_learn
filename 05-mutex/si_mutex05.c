@@ -19,11 +19,123 @@ static char device_buffer[BUFFER_SIZE] = "hello from mutex device\n";
 static size_t device_size = sizeof("hello from mutex device\n") - 1;
 
 /*
- * device_buffer 和 device_size 是共享数据：
- * 多个进程可能同时执行 read() 或 write()。
+ * ==================== mutex API 速查 ====================
  *
- * DEFINE_MUTEX() 会声明并初始化一个 mutex。
- * 访问这两个共享变量前必须先拿到这把锁。
+ * mutex 用来保护“进程上下文”中的共享数据。和 raw_spinlock_t 不同，
+ * mutex 获取失败时，当前任务会进入睡眠，把 CPU 让给其他任务。
+ * 因此 mutex 临界区里可以调用可能睡眠的函数，例如 copy_to_user()、
+ * copy_from_user()、kmalloc(..., GFP_KERNEL) 或 wait_event()。
+ *
+ * 一、声明和初始化
+ *
+ *   DEFINE_MUTEX(lock);
+ *       静态声明并初始化一把 mutex。本课使用这种方式：
+ *
+ *       static DEFINE_MUTEX(buffer_lock);
+ *
+ *   struct mutex lock;
+ *   mutex_init(&lock);
+ *       运行时初始化动态分配或结构体成员中的 mutex。
+ *       mutex_init() 只能对未初始化、未持有的 mutex 调用。
+ *
+ *   mutex_destroy(&lock);
+ *       销毁动态初始化的 mutex，通常在释放外层对象前调用。
+ *       对 DEFINE_MUTEX() 的静态 mutex 一般不需要调用；在当前配置下，
+ *       非调试版本的 mutex_destroy() 甚至可能是空操作。
+ *
+ * 二、获取 mutex
+ *
+ *   mutex_lock(&lock);
+ *       阻塞等待直到拿到锁。返回值是 void，没有错误返回。
+ *       等待期间忽略普通信号；只能在进程上下文使用，可能睡眠。
+ *
+ *   mutex_lock_interruptible(&lock);
+ *       本课使用的版本。等待期间可以被信号打断：
+ *
+ *       返回 0              成功拿到锁
+ *       返回 -ERESTARTSYS   被信号打断，没有拿到锁
+ *
+ *       返回非 0 时不能执行 mutex_unlock()，因为当前任务并没有拿到锁。
+ *
+ *   mutex_lock_killable(&lock);
+ *       和 mutex_lock_interruptible() 类似，但只响应致命信号，常见返回
+ *       值为 -EINTR。适合不希望普通信号打断、但仍希望任务能被 SIGKILL
+ *       等致命信号唤醒的场景。
+ *
+ *   mutex_lock_io(&lock);
+ *       和 mutex_lock() 的等待语义基本相同，但等待锁时把当前任务计入
+ *       I/O wait 状态，供调度器统计。普通驱动很少需要它。
+ *
+ *   mutex_trylock(&lock);
+ *       非阻塞尝试获取 mutex，不会睡眠：
+ *
+ *       返回 1   成功拿到锁
+ *       返回 0   锁正在被别人持有
+ *
+ *       trylock 失败时不能调用 mutex_unlock()。它虽然不等待，但 mutex
+ *       仍然要求由进程上下文中的同一个任务获取和释放，所以不能把它
+ *       当成中断处理函数里的自旋锁替代品。
+ *
+ * 三、释放和状态查询
+ *
+ *   mutex_unlock(&lock);
+ *       释放当前任务已经持有的 mutex。必须和成功的加锁操作配对，不能
+ *       由另一个任务代替释放，也不能重复解锁。
+ *
+ *   mutex_is_locked(&lock);
+ *       查询 mutex 当前是否被持有，返回 true 或 false。它主要用于调试
+ *       和断言，不能用来代替真正的加锁；“先查询、后加锁”不是原子操作。
+ *
+ * 四、lockdep 的嵌套版本
+ *
+ *   mutex_lock_nested(&lock, subclass);
+ *   mutex_lock_interruptible_nested(&lock, subclass);
+ *   mutex_lock_killable_nested(&lock, subclass);
+ *   mutex_lock_io_nested(&lock, subclass);
+ *   mutex_lock_nest_lock(&lock, nest_lock);
+ *
+ *   这些接口用于告诉 lockdep：当前存在已知的锁嵌套层级或锁依赖关系，
+ *   主要用于复杂子系统的死锁检测。普通驱动通常使用不带 _nested 的
+ *   简单版本，不要为了“看起来完整”而随意填写 subclass。
+ *
+ * 五、和引用计数配合的接口
+ *
+ *   atomic_dec_and_mutex_lock(&count, &lock);
+ *
+ *   原子地减少 count；当 count 减到 0 时再获取 lock，成功时返回 true。
+ *   常用于对象引用计数归零、准备执行最后清理的场景。本课程暂不使用。
+ *
+ * 六、必须遵守的规则
+ *
+ *   1. mutex 可能睡眠，不能在硬中断、软中断、tasklet 中调用：
+ *
+ *          mutex_lock()       错误
+ *          mutex_trylock()    也不能因此当作中断锁使用
+ *          mutex_unlock()     也必须由原来持锁的进程执行
+ *
+ *      中断上下文需要使用合适的 spinlock/raw_spinlock_t，或者把工作
+ *      延后到 workqueue、内核线程等进程上下文。
+ *
+ *   2. mutex 不允许递归获取：同一个任务重复 mutex_lock() 会死锁。
+ *
+ *   3. 所有成功的加锁路径都必须有且只有一个 mutex_unlock()，错误路径
+ *      建议使用 goto unlock 统一释放，避免遗漏。
+ *
+ *   4. 不要把用户指针、可能无效的地址或耗时很长的无关操作放进临界区；
+ *      虽然 mutex 允许睡眠，但锁持有太久仍会阻塞其他任务。
+ *
+ * 七、当前 GJ3 RT 内核的说明
+ *
+ *   当前内核 CONFIG_PREEMPT_RT=y。mutex 的底层实现使用 rtmutex，仍然
+ *   保持“竞争时可以睡眠”的 mutex 语义，并支持实时任务需要的优先级
+ *   继承。不要因为底层实现不同就把 mutex 当成 raw_spinlock 使用。
+ *
+ * 本课的 device_buffer/device_size 是共享数据：多个进程可能同时执行
+ * read() 或 write()。访问它们前先获取 buffer_lock，完成后释放。
+ * 当前 read()/write() 使用 mutex_lock_interruptible()，所以收到可处理
+ * 信号时会返回错误，而不会在没有拿到锁的情况下继续访问共享数据。
+ *
+ * ==================== mutex API 速查结束 ====================
  */
 static DEFINE_MUTEX(buffer_lock);
 

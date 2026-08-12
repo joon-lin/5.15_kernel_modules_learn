@@ -19,6 +19,7 @@ compile_commands.json
 
 # Local toolchain/helper directories
 .toolchain/
+user/si_char_test
 
 # Editors and OS files
 .vscode/

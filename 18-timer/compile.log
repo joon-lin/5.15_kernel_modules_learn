@@ -1,0 +1,22 @@
+make: Entering directory '/home/winterforest/Yocto/si-stm/kernel_modules/18-timer'
+Kernel source : /home/winterforest/Yocto/si-stm/build-gj3_2/tmp-glibc/work-shared/stm32mp15-eval-mx-gj3/kernel-source
+Kernel output : /home/winterforest/Yocto/si-stm/build-gj3_2/tmp-glibc/work/stm32mp15_eval_mx_gj3-ostl-linux-gnueabi/linux-stm32mp/5.15.67.rt49-stm32mp-r1-r0/build
+Module source : /home/winterforest/Yocto/si-stm/kernel_modules/18-timer/
+ARCH          : arm
+CROSS_COMPILE : arm-ostl-linux-gnueabi-
+make -C /home/winterforest/Yocto/si-stm/build-gj3_2/tmp-glibc/work-shared/stm32mp15-eval-mx-gj3/kernel-source O=/home/winterforest/Yocto/si-stm/build-gj3_2/tmp-glibc/work/stm32mp15_eval_mx_gj3-ostl-linux-gnueabi/linux-stm32mp/5.15.67.rt49-stm32mp-r1-r0/build M=/home/winterforest/Yocto/si-stm/kernel_modules/18-timer/ \
+	ARCH=arm CROSS_COMPILE=arm-ostl-linux-gnueabi- \
+	modules
+make[1]: Entering directory '/home/winterforest/Yocto/si-stm/build-gj3_2/tmp-glibc/work-shared/stm32mp15-eval-mx-gj3/kernel-source'
+make[2]: Entering directory '/home/winterforest/Yocto/si-stm/build-gj3_2/tmp-glibc/work/stm32mp15_eval_mx_gj3-ostl-linux-gnueabi/linux-stm32mp/5.15.67.rt49-stm32mp-r1-r0/build'
+  CC [M]  /home/winterforest/Yocto/si-stm/kernel_modules/18-timer/si_timer18.o
+  MODPOST /home/winterforest/Yocto/si-stm/kernel_modules/18-timer/Module.symvers
+ERROR: modpost: "__aeabi_uldivmod" [/home/winterforest/Yocto/si-stm/kernel_modules/18-timer/si_timer18.ko] undefined!
+make[3]: *** [/home/winterforest/Yocto/si-stm/build-gj3_2/tmp-glibc/work-shared/stm32mp15-eval-mx-gj3/kernel-source/scripts/Makefile.modpost:133: /home/winterforest/Yocto/si-stm/kernel_modules/18-timer/Module.symvers] Error 1
+make[3]: *** Deleting file '/home/winterforest/Yocto/si-stm/kernel_modules/18-timer/Module.symvers'
+make[2]: *** [/home/winterforest/Yocto/si-stm/build-gj3_2/tmp-glibc/work-shared/stm32mp15-eval-mx-gj3/kernel-source/Makefile:1814: modules] Error 2
+make[2]: Leaving directory '/home/winterforest/Yocto/si-stm/build-gj3_2/tmp-glibc/work/stm32mp15_eval_mx_gj3-ostl-linux-gnueabi/linux-stm32mp/5.15.67.rt49-stm32mp-r1-r0/build'
+make[1]: *** [Makefile:219: __sub-make] Error 2
+make[1]: Leaving directory '/home/winterforest/Yocto/si-stm/build-gj3_2/tmp-glibc/work-shared/stm32mp15-eval-mx-gj3/kernel-source'
+make: *** [Makefile:35: all] Error 2
+make: Leaving directory '/home/winterforest/Yocto/si-stm/kernel_modules/18-timer'
